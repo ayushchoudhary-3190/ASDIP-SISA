@@ -1,0 +1,40 @@
+# Dependencies
+/node_modules/
+/vendor/
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+
+# Build artifacts
+/dist/
+/build/
+/.out/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Backend specific
+/backend-go/bin/
+/backend-go/pkg/
+
+# ML service specific
+/ml-service/__pycache__/
+/ml-service/venv/
+/ml-service/env/
+/ml-service/.venv/
