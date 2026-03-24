@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
@@ -33,18 +33,79 @@ async def health_check():
     return {"status": "ok"}
 
 @app.post("/analyze")
-async def analyze(request: dict):
+async def analyze(
+    input_type: str = "text",
+    content: str = "",
+    options: str = "{}",
+    file: UploadFile = File(None)
+):
     try:
-        input_type = request.get("input_type", "text")
-        content = request.get("content", "")
-        options = request.get("options", {})
+        # Parse options if it's a string
+        if isinstance(options, str):
+            import json
+            options = json.loads(options)
         
-        # Extract text if needed
-        if input_type in ["file", "pdf", "docx"]:
-            # In a real implementation, we'd handle file upload here
-            # For now, we'll assume content is already extracted
-            pass
+        # Handle file upload
+        if file and (input_type in ["file", "pdf", "docx", "log"] or options.get("log_analysis", False)):
+            # Save uploaded file temporarily
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
+                content_bytes = await file.read()
+                temp_file.write(content_bytes)
+                temp_file_path = temp_file.name
             
+            try:
+                # Extract text from file
+                file_type = None
+                if input_type == "pdf":
+                    file_type = ".pdf"
+                elif input_type == "docx":
+                    file_type = ".docx"
+                elif input_type in ["file", "log"]:
+                    # Determine type from filename
+                    filename = file.filename.lower()
+                    if filename.endswith('.pdf'):
+                        file_type = ".pdf"
+                    elif filename.endswith('.docx'):
+                        file_type = ".docx"
+                    elif filename.endswith('.txt') or filename.endswith('.log'):
+                        file_type = ".txt"
+                    else:
+                        file_type = ".txt"  # Default to text
+                
+                extracted_content = file_extractor.extract_text(temp_file_path, file_type)
+                content = extracted_content
+            finally:
+                # Clean up temp file
+                os.unlink(temp_file_path)
+        elif not content and file:
+            # If no input_type specified but file provided, try to extract
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
+                content_bytes = await file.read()
+                temp_file.write(content_bytes)
+                temp_file_path = temp_file.name
+            
+            try:
+                # Determine file type from filename
+                filename = file.filename.lower()
+                if filename.endswith('.pdf'):
+                    file_type = ".pdf"
+                elif filename.endswith('.docx'):
+                    file_type = ".docx"
+                elif filename.endswith('.txt') or filename.endswith('.log'):
+                    file_type = ".txt"
+                else:
+                    file_type = ".txt"  # Default to text
+                
+                extracted_content = file_extractor.extract_text(temp_file_path, file_type)
+                content = extracted_content
+                if input_type == "text":
+                    input_type = "file"
+            finally:
+                # Clean up temp file
+                os.unlink(temp_file_path)
+        
         # Parse logs if needed
         if input_type == "log" or options.get("log_analysis", False):
             findings = log_parser.parse_logs(content)
