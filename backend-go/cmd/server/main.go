@@ -8,17 +8,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gin-contrib/cors"
 
-	"github.com/yourname/ai-security-platform/internal/handlers"
-	"github.com/yourname/ai-security-platform/internal/middleware"
+	"github.com/yourname/ai-security-platform/backend-go/internal/handlers"
+	"github.com/yourname/ai-security-platform/backend-go/internal/gateway"
+	"github.com/yourname/ai-security-platform/backend-go/internal/middleware"
 )
 
 func main() {
+	// Initialize ML client
+	gateway.InitMLClient()
+
 	// Create Gin router
 	r := gin.New()
 
 	// Add middleware
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
+	r.Use(middleware.ErrorHandler())
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
