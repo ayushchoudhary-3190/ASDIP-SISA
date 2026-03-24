@@ -1,0 +1,228 @@
+# AI Secure Data Intelligence Platform - ML Service Documentation
+
+## Overview
+The ML Service is a Python-based microservice that forms the intelligence core of the AI Secure Data Intelligence Platform. It performs security analysis on various input types using regex pattern matching, log parsing, risk assessment, and AI-powered insights generation.
+
+## Architecture
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│   Go Backend    │───▶│   ML Service     │◀───│  OpenAI API      │
+└─────────────────┘    └──────────────────┘    └──────────────────┘
+                                │
+                                ▼
+                    ┌──────────────────┐
+                    │   Analysis       │
+                    └──────────────────┘
+                                │
+                    ┌──────────────────┐
+                    │   Results        │
+                    └──────────────────┘
+```
+
+## Components
+
+### 1. Pattern Detector (`analyzer/pattern_detector.py`)
+**Purpose**: Detects sensitive data patterns using regular expressions
+
+**Patterns Detected**:
+- Email: `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` (Low Risk)
+- Phone: `\b(\+?1?[-.\s]?)?(\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b` (Low Risk)
+- API Key (OpenAI): `sk-[a-zA-Z0-9]{32,}` (High Risk)
+- API Key (Generic): `(?i)(api[_-]?key|apikey)\s*[=:]\s*[^\s]+` (High Risk)
+- Password: `(?i)(password|passwd|pwd)\s*[=:]\s*[^\s]+` (Critical Risk)
+- Bearer Token: `Bearer\s+[A-Za-z0-9\-._~+/]+=*` (High Risk)
+- Secret/Token: `(?i)(secret|token)\s*[=:]\s*[^\s]+` (High Risk)
+- Stack Trace: `(Exception|Error|Traceback|at .+\.java:\d+)` (Medium Risk)
+- IP Address: `\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b` (Low Risk)
+- Credit Card: `\b(?:\d[ -]?){13,16}\b` (Critical Risk)
+
+**Risk Weighting System**:
+- Critical: 5 points (password, credit card)
+- High: 3 points (API key, token, secret)
+- Medium: 2 points (stack trace, debug mode)
+- Low: 1 point (email, phone, IP)
+
+### 2. Log Parser (`analyzer/log_parser.py`)
+**Purpose**: Parses log files line-by-line with support for large files through chunking
+
+**Features**:
+- Line-by-line processing for accurate line number tracking
+- Chunk-based processing for files >1MB
+- Delegates pattern detection to PatternDetector
+- Preserves line numbers in findings
+
+### 3. Risk Engine (`analyzer/risk_engine.py`)
+**Purpose**: Calculates risk scores and determines overall risk level
+
+**Risk Score Calculation**:
+```
+risk_score = sum of all finding weights
+```
+Where weights are:
+- Critical findings: 5 points each
+- High findings: 3 points each
+- Medium findings: 2 points each
+- Low findings: 1 point each
+
+**Risk Level Mapping**:
+- 0-3 points: Low risk
+- 4-6 points: Medium risk
+- 7-10 points: High risk
+- 11+ points: Critical risk
+
+### 4. File Extractor (`analyzer/file_extractor.py`)
+**Purpose**: Extracts text content from various file formats
+
+**Supported Formats**:
+- PDF (.pdf): Using PyPDF2
+- Word Document (.docx): Using python-docx
+- Plain Text (.txt, .log): Direct reading
+
+### 5. AI Insights Generator (`analyzer/ai_insights.py`)
+**Purpose**: Generates human-readable security insights using OpenAI GPT-4o
+
+**Process**:
+1. Takes findings and input type as input
+2. Constructs a prompt for the AI model
+3. Calls OpenAI GPT-4o API
+4. Returns structured JSON with summary and insights array
+5. Falls back to rule-based insights if API unavailable
+
+**System Prompt**:
+```
+"You are a security analyst. Analyze the findings from a log/data scan and return a JSON object with:
+- summary (string): 1-2 sentence overview
+- insights (array of strings): 3-5 specific, actionable findings
+Be specific, not generic. Reference actual finding types found. Return ONLY valid JSON, no markdown."
+```
+
+### 6. Policy Engine (`analyzer/policy_engine.py`)
+**Purpose**: Applies security policies for masking sensitive data and blocking high-risk requests
+
+**Functions**:
+- **Masking**: Replaces sensitive values with `***MASKED***` when requested
+- **Blocking**: Returns blocked action when critical risk detected and blocking enabled
+- **Summary Generation**: Creates human-readable summaries of analysis results
+
+### 7. Main Application (`main.py`)
+**Purpose**: FastAPI web service exposing HTTP endpoints
+
+**Endpoints**:
+- `GET /health`: Returns `{"status": "ok"}`
+- `POST /analyze`: Main analysis endpoint accepting:
+  - `input_type`: text, file, log, sql, chat
+  - `content`: The input data to analyze
+  - `options`: JSON object with mask and block_high_risk flags
+  - `file`: Optional file upload for file-based inputs
+
+## Working Flow
+
+1. **Request Reception**: Go backend sends POST request to `/analyze` endpoint
+2. **Input Processing**: 
+   - Determines processing method based on input_type
+   - For file inputs: extracts text using appropriate extractor
+   - For log inputs: processes line-by-line with line number tracking
+   - For text inputs: analyzes directly
+3. **Pattern Detection**: Identifies security-relevant patterns using regex
+4. **Risk Assessment**: Calculates risk score and determines risk level
+5. **AI Insights Generation**: Calls OpenAI GPT-4o for contextual insights
+6. **Policy Application**: Applies masking/blocking based on options
+7. **Response Formation**: Returns structured JSON with findings, risk assessment, insights, and recommended action
+
+## Data Flow Example
+
+**Input** (Log Sample):
+```
+2026-03-10 10:00:01 INFO User login email=admin@company.com
+2026-03-10 10:00:02 DEBUG password=admin123 attempt from 192.168.1.1
+2026-03-10 10:00:03 INFO api_key=sk-prod-xyz123456789abcdefghijk
+2026-03-10 10:00:04 ERROR NullPointerException at UserService.java:45
+2026-03-10 10:00:05 INFO Bearer eyJhbGciOiJIUzI1NiJ9.token.here
+```
+
+**Processing Steps**:
+1. Line-by-line log parsing
+2. Pattern detection on each line
+3. Risk scoring: 1(Email) + 5(Password) + 1(IP) + 3(API Key) + 2(Stack Trace) + 2(Stack Trace) + 3(Bearer Token) = 17 points
+4. Risk level determination: 17 points → Critical risk
+5. AI insights generation: Specific recommendations about each finding type
+6. Policy application: No masking/blocking → action = "allowed"
+
+**Output**:
+```json
+{
+  "summary": "Analysis completed: 1 critical risk item(s), 2 high-risk item(s), 2 medium-risk item(s), 2 low-risk item(s) found.",
+  "content_type": "log",
+  "findings": [
+    {"type": "email", "risk": "low", "line": 1, "value": "admin@company.com"},
+    {"type": "password", "risk": "critical", "line": 2, "value": "password"},
+    {"type": "ip_address", "risk": "low", "line": 2, "value": "192.168.1.1"},
+    {"type": "api_key_generic", "risk": "high", "line": 3, "value": "api_key"},
+    {"type": "stack_trace", "risk": "medium", "line": 4, "value": "Exception"},
+    {"type": "stack_trace", "risk": "medium", "line": 4, "value": "at UserService.java:45"},
+    {"type": "bearer_token", "risk": "high", "line": 5, "value": "Bearer eyJhbGciOiJIUzI1NiJ9.token.here"}
+  ],
+  "risk_score": 17,
+  "risk_level": "critical",
+  "action": "allowed",
+  "insights": [
+    "Found 1 critical risk item(s) including passwords or credit card numbers requiring immediate remediation.",
+    "Detected 2 high-risk item(s) such as API keys or tokens that should be rotated immediately.",
+    "Plaintext passwords exposed in logs - immediate credential rotation required.",
+    "API keys detected in logs - potential for unauthorized service access.",
+    "Email addresses found (1 instance(s)) - review data retention policies."
+  ]
+}
+```
+
+## Integration Points
+
+### With Go Backend:
+- Communication via HTTP REST API
+- Go service sends JSON payload to `/analyze` endpoint
+- ML service returns JSON response with analysis results
+- Go service handles final masking/blocking decisions based on ML service recommendations
+
+### Configuration:
+- Environment variables loaded from `.env` file
+- Key variables: `OPENAI_API_KEY`, service URLs, ports
+- Requires valid OpenAI API key for AI insights (falls back to rule-based if unavailable)
+
+## Dependencies (requirements.txt):
+- fastapi==0.104.1: Web framework
+- uvicorn==0.24.0: ASGI server
+- python-multipart==0.0.6: Form data handling
+- openai==1.3.0: OpenAI API client
+- pdfplumber==0.10.3: PDF text extraction
+- python-docx==1.1.0: DOCX text extraction
+- langchain==0.1.0: LLM integration framework
+- langchain-openai==0.0.2: OpenAI integration for LangChain
+- python-dotenv==1.0.0: Environment variable management
+
+## Deployment:
+- Containerized using Docker
+- Deployed to Railway.app (free tier)
+- Exposes port 8000 for HTTP communication
+- Scales horizontally as needed
+
+## Security Considerations:
+- No sensitive data stored in logs or memory beyond processing
+- API keys secured via environment variables
+- Input validation and sanitization
+- CORS middleware configured appropriately
+- Error handling prevents information leakage
+
+## Performance Characteristics:
+- Designed for real-time analysis
+- Efficient regex compilation for pattern detection
+- Chunk-based processing for large files
+- Asynchronous AI insights generation to prevent blocking
+- Horizontal scaling capability for high throughput
+
+## Testing & Validation:
+- Unit-testable components
+- Integration testable via TestClient
+- Verified against sample data from execution plan
+- Error handling for malformed inputs
+- Graceful degradation when external services unavailable
