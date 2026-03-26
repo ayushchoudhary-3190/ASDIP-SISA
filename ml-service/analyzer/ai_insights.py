@@ -2,7 +2,7 @@ import os
 import json
 import logging
 from typing import List, Dict, Any
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -11,12 +11,16 @@ logger = logging.getLogger(__name__)
 
 class AIInsightsGenerator:
     def __init__(self):
-        # Initialize OpenAI client
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Initialize Gemini client
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if gemini_key:
+            genai.configure(api_key=gemini_key)
+            self.client = genai.GenerativeModel('gemini-2.0-flash')
+        else:
+            self.client = None
         
         # System prompt for security analysis
         self.system_prompt = """You are a security analyst. Analyze the findings from a log/data scan and return a JSON object with:
-- summary (string): 1-2 sentence overview
 - insights (array of strings): 3-5 specific, actionable findings
 Be specific, not generic. Reference actual finding types found. Return ONLY valid JSON, no markdown."""
 
@@ -25,33 +29,53 @@ Be specific, not generic. Reference actual finding types found. Return ONLY vali
         Generate AI-powered insights based on findings
         """
         try:
-            # Handle case where OpenAI API key is not available
-            if not os.getenv("OPENAI_API_KEY"):
-                logger.warning("OpenAI API key not found, returning mock insights")
+            # Handle case where Gemini API key is not available
+            if not self.client:
+                logger.warning("GEMINI_API_KEY not found, returning mock insights")
                 return self._generate_mock_insights(findings, input_type)
+            
+            # Calculate risk score
+            risk_score = sum([
+                5 if f.get('risk') == 'critical' else 
+                3 if f.get('risk') == 'high' else 
+                2 if f.get('risk') == 'medium' else 
+                1 for f in findings
+            ])
             
             # Prepare user prompt
             user_prompt = f"""Findings: {json.dumps(findings, indent=2)}
 Input type: {input_type}
-Risk score: {sum([5 if f.get('risk') == 'critical' else 3 if f.get('risk') == 'high' else 2 if f.get('risk') == 'medium' else 1 for f in findings])}"""
+Risk score: {risk_score}
+
+Provide a JSON response with an 'insights' key containing an array of 3-5 specific security recommendations."""
             
-            # Call OpenAI API
-            response = self.client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": self.system_prompt},
-                    {"role": "user", "content": user_prompt}
+            # Call Gemini API
+            response = self.client.generate_content(
+                contents=[
+                    {"role": "user", "parts": [{"text": self.system_prompt}]},
+                    {"role": "user", "parts": [{"text": user_prompt}]}
                 ],
-                temperature=0.3,
-                max_tokens=500
+                generation_config={
+                    "temperature": 0.3,
+                    "max_output_tokens": 500,
+                    "response_schema": {"type": "object", "properties": {"insights": {"type": "array", "items": {"type": "string"}}}, "required": ["insights"]}
+                }
             )
             
             # Parse response
-            content = response.choices[0].message.content.strip()
+            content = response.text.strip()
             
             # Try to parse as JSON
             try:
-                result = json.loads(content)
+                # Handle potential markdown code blocks
+                if content.startswith("```json"):
+                    content = content[7:]
+                if content.startswith("```"):
+                    content = content[3:]
+                if content.endswith("```"):
+                    content = content[:-3]
+                
+                result = json.loads(content.strip())
                 insights = result.get("insights", [])
                 # Ensure we return a list of strings
                 if isinstance(insights, list):
@@ -59,7 +83,7 @@ Risk score: {sum([5 if f.get('risk') == 'critical' else 3 if f.get('risk') == 'h
                 else:
                     return [str(insights)]
             except json.JSONDecodeError:
-                logger.error(f"Failed to parse OpenAI response as JSON: {content}")
+                logger.error(f"Failed to parse Gemini response as JSON: {content}")
                 return self._generate_mock_insights(findings, input_type)
                 
         except Exception as e:
@@ -68,7 +92,7 @@ Risk score: {sum([5 if f.get('risk') == 'critical' else 3 if f.get('risk') == 'h
     
     def _generate_mock_insights(self, findings: List[Dict[str, Any]], input_type: str) -> List[str]:
         """
-        Generate mock insights when OpenAI is not available
+        Generate mock insights when Gemini API is not available
         """
         if not findings:
             return ["No security findings detected in the input."]
@@ -108,6 +132,9 @@ Risk score: {sum([5 if f.get('risk') == 'critical' else 3 if f.get('risk') == 'h
         if type_counts.get('stack_trace', 0) > 0:
             insights.append("Stack traces revealed - potential information disclosure about internal systems.")
             
+        if type_counts.get('brute_force', 0) > 0:
+            insights.append("Brute-force attack pattern detected - review access controls and consider implementing account lockout policies.")
+        
         # Add a general insight if we don't have enough
         if len(insights) < 3:
             insights.append(f"Analysis of {input_type} input completed with {len(findings)} total security findings identified.")
