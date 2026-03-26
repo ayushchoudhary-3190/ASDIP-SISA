@@ -31,6 +31,19 @@ func AnalyzeHandler(c *gin.Context) {
 		return
 	}
 
+	// Return 403 if blocked
+	if mlResp.Action == "blocked" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":       "Request blocked due to security policy",
+			"reason":      mlResp.Reason,
+			"risk_level":  mlResp.RiskLevel,
+			"risk_score":   mlResp.RiskScore,
+			"findings":    mlResp.Findings,
+			"action":      mlResp.Action,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, mlResp)
 }
 
@@ -85,6 +98,19 @@ func AnalyzeUploadHandler(c *gin.Context) {
 	mlResp, err := gateway.CallMLService(req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "ML service unavailable"})
+		return
+	}
+
+	// Return 403 if blocked
+	if mlResp.Action == "blocked" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":       "Request blocked due to security policy",
+			"reason":      mlResp.Reason,
+			"risk_level":  mlResp.RiskLevel,
+			"risk_score":   mlResp.RiskScore,
+			"findings":    mlResp.Findings,
+			"action":      mlResp.Action,
+		})
 		return
 	}
 

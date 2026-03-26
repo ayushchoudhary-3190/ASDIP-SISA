@@ -24,6 +24,9 @@ func main() {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.Use(middleware.ErrorHandler())
+	r.Use(middleware.SecurityHeaders())
+
+	// CORS configuration
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -33,16 +36,30 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// Metrics middleware
+	r.Use(func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		duration := time.Since(start)
+		status := c.Writer.Status()
+		endpoint := c.Request.URL.Path
+		handlers.RecordRequest(c.Request.Method, endpoint, http.StatusText(status), duration)
+	})
+
 	// Health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	// Analysis endpoints
-	analysis := r.Group("/analyze")
+	// Metrics endpoint
+	r.GET("/metrics", handlers.MetricsHandler)
+
+	// Rate limited endpoints
+	limited := r.Group("/")
+	limited.Use(middleware.RateLimit())
 	{
-		analysis.POST("", handlers.AnalyzeHandler)
-		analysis.POST("/upload", handlers.AnalyzeUploadHandler)
+		limited.POST("/analyze", handlers.AnalyzeHandler)
+		limited.POST("/analyze/upload", handlers.AnalyzeUploadHandler)
 	}
 
 	// Start server

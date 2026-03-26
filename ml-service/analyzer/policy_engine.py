@@ -22,8 +22,18 @@ class PolicyEngine:
         
         # Check if we should block due to high risk
         action = "allowed"
-        if block_high_risk and risk_level == "critical":
-            action = "blocked"
+        reason = ""
+        critical_count = len([f for f in findings if f.get('risk') == 'critical'])
+        high_risk_count = len([f for f in findings if f.get('risk') == 'high'])
+        brute_force_count = len([f for f in findings if f.get('type') == 'brute_force'])
+        
+        if block_high_risk:
+            if risk_level == "critical" or (risk_level == "high" and brute_force_count > 0):
+                action = "blocked"
+                if risk_level == "critical":
+                    reason = f"Content contains {critical_count} critical risk items (passwords, credit cards). Blocked by security policy."
+                else:
+                    reason = f"Detected {brute_force_count} brute-force attack(s). {high_risk_count} high-risk item(s) found. Blocked by security policy."
         
         # Apply masking if requested
         processed_findings = findings
@@ -38,7 +48,8 @@ class PolicyEngine:
             "findings": processed_findings,
             "risk_score": risk_score,
             "risk_level": risk_level,
-            "action": action
+            "action": action,
+            "reason": reason
         }
     
     def _apply_masking(self, findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

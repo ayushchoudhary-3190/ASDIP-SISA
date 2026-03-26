@@ -15,7 +15,7 @@ func ErrorHandler() gin.HandlerFunc {
 		defer func() {
 			if err := recover(); err != nil {
 				// Log the panic
-				log.Printf("Panic recovered: %v\n%s", err, string(debug.Stack()))
+				logMsg("Panic recovered: %v\n%s", err, string(debug.Stack()))
 
 				// Return 500 Internal Server Error
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
@@ -28,7 +28,7 @@ func ErrorHandler() gin.HandlerFunc {
 }
 
 // Simple logger for errors
-func log(format string, v ...interface{}) {
+func logMsg(format string, v ...interface{}) {
 	// In a real implementation, this would use a proper logging library
 	// For now, we'll just print to stderr
 	fmt.Fprintf(os.Stderr, "[ERROR] "+format+"\n", v...)

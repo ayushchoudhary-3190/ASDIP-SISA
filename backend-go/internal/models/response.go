@@ -8,6 +8,7 @@ type AnalyzeResponse struct {
 	RiskLevel   string    `json:"risk_level"`
 	Action      string    `json:"action"`
 	Insights    []string  `json:"insights"`
+	Reason      string    `json:"reason,omitempty"`
 }
 
 type Finding struct {

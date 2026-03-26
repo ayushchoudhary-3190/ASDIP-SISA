@@ -1,5 +1,10 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi import Form
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response
 import uvicorn
 import os
 from analyzer.pattern_detector import PatternDetector
@@ -9,7 +14,19 @@ from analyzer.file_extractor import FileExtractor
 from analyzer.ai_insights import AIInsightsGenerator
 from analyzer.policy_engine import PolicyEngine
 
+# File size limit: 5MB
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB in bytes
+
 app = FastAPI(title="AI Security Platform ML Service")
+
+# Security headers middleware
+@app.middleware("http")
+async def add_security_headers(request: StarletteRequest, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    return response
 
 # Add CORS middleware
 app.add_middleware(
@@ -34,11 +51,27 @@ async def health_check():
 
 @app.post("/analyze")
 async def analyze(
-    input_type: str = "text",
-    content: str = "",
-    options: str = "{}",
-    file: UploadFile = File(None)
+    request: Request,
+    input_type: str = Form(default="text"),
+    content: str = Form(default=""),
+    options: str = Form(default="{}"),
+    file: UploadFile = File(default=None)
 ):
+    # Check content size (10MB limit for content)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Content too large. Maximum size is 10MB.")
+    
+    # Check if request is JSON
+    content_type = request.headers.get("content-type", "")
+    
+    if "application/json" in content_type:
+        try:
+            json_body = await request.json()
+            input_type = json_body.get("input_type", input_type)
+            content = json_body.get("content", content)
+            options = json_body.get("options", options)
+        except:
+            pass
     try:
         # Parse options if it's a string
         if isinstance(options, str):
@@ -49,8 +82,13 @@ async def analyze(
         if file and (input_type in ["file", "pdf", "docx", "log"] or options.get("log_analysis", False)):
             # Save uploaded file temporarily
             import tempfile
+            content_bytes = await file.read()
+            
+            # Check file size (5MB limit)
+            if len(content_bytes) > MAX_FILE_SIZE:
+                raise HTTPException(status_code=413, detail="File too large. Maximum size is 5MB.")
+            
             with tempfile.NamedTemporaryFile(delete=False, suffix=f"_{file.filename}") as temp_file:
-                content_bytes = await file.read()
                 temp_file.write(content_bytes)
                 temp_file_path = temp_file.name
             
@@ -132,6 +170,7 @@ async def analyze(
             "risk_score": policy_result["risk_score"],
             "risk_level": policy_result["risk_level"],
             "action": policy_result["action"],
+            "reason": policy_result.get("reason", ""),
             "insights": insights
         }
     except Exception as e:

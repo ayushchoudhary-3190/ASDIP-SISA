@@ -28,7 +28,8 @@ class PatternDetector:
             'secret_token': 'high',
             'stack_trace': 'medium',
             'ip_address': 'low',
-            'credit_card': 'critical'
+            'credit_card': 'critical',
+            'brute_force': 'high'
         }
 
     def detect_patterns(self, content: str) -> List[Dict[str, Any]]:
