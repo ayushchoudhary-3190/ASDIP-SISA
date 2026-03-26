@@ -11,9 +11,9 @@ var MLClientInstance *MLClient
 
 // InitMLClient initializes the ML client with the service URL from environment
 func InitMLClient() {
-	mlServiceURL := os.Getenv("ML_SERVICE_URL")
+	mlServiceURL := os.Getenv("ML-URL")
 	if mlServiceURL == "" {
-		mlServiceURL = "http://localhost:8000" // default for development
+		mlServiceURL = "https://asdip-sisa-ml.onrender.com/" // default for development
 	}
 	MLClientInstance = NewMLClient(mlServiceURL)
 }
