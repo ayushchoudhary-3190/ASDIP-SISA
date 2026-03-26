@@ -1,0 +1,12 @@
+[CHAT CONVERSATION - Support Ticket #48291]
+
+User [09:12]: Hi, I can't log into my account. My email is mike.johnson@gmail.com
+Support [09:13]: Hi Mike! Let me help. Can you confirm your account details?
+User [09:14]: Sure. Username: mjohnson, password is Mike@2026! I haven't changed it.
+Support [09:15]: Got it. Let me check your account.
+User [09:16]: Also, my payment card on file is 4532 1234 5678 9010, maybe that's causing the issue?
+Support [09:17]: I see your account. Resetting your session now. Temp password: TempPass#9921
+User [09:18]: Thanks! Also my phone is 555-234-5678 if you need to call.
+Support [09:19]: Perfect. We've also noted your API key sk-test-abc123DEF456ghi789 is expired — please rotate it.
+User [09:20]: Will do. One more thing — my SSN is 123-45-6789 for identity verification.
+Support [09:21]: Account restored! Please change your password immediately.
