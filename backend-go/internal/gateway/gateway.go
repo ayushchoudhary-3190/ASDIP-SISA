@@ -13,7 +13,7 @@ var MLClientInstance *MLClient
 func InitMLClient() {
 	mlServiceURL := os.Getenv("ML-URL")
 	if mlServiceURL == "" {
-		mlServiceURL = "https://asdip-sisa-ml.onrender.com/" // default for development
+		mlServiceURL = "https://asdip-sisa-ml.onrender.com"
 	}
 	MLClientInstance = NewMLClient(mlServiceURL)
 }
